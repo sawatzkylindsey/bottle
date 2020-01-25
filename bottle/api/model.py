@@ -34,7 +34,7 @@ class IterativelyOptimized(Model):
         raise NotImplementedError()
 
 
-class TfModel(IterativelyOptimized):
+class TfModel(Model):
     def __init__(self):
         super().__init__()
         self.namespace = None
@@ -44,7 +44,7 @@ class TfModel(IterativelyOptimized):
     def assert_shape(self, tensor, expected):
         assert tensor.shape.as_list() == expected, "actual %s != expected %s" % (tensor.shape, expected)
 
-    def define_in_namespace(self, computational_graph_definition, namespace):
+    def define_in_namespace(self, namespace, computational_graph_definition):
         if self.namespace is not None:
             raise ValueError("model may only be initialized once.")
 
@@ -71,9 +71,6 @@ class TfModel(IterativelyOptimized):
             initializer=tf.contrib.layers.xavier_initializer() if initial is None else tf.constant_initializer(initial))
 
     def save_parameters(self, savepoint):
-        #if os.path.isfile(directory) or (directory.endswith("/") and os.path.isfile(os.path.dirname(directory))):
-        #    raise ValueError("directory '%s' must not be a file." % directory)
-
         self.saver.save(self.session, os.path.join(savepoint.model_dir, self.save_name), global_step=savepoint.step)
 
     def load_parameters(self, savepoint):
