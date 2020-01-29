@@ -47,12 +47,18 @@ class Datastream:
             self.size = None
             self.order_of_magnitude = check.check_gte(order_of_magnitude, 0)
 
+    def _set_or_check_size(self, value):
+        if self.size is None:
+            self.size = value
+        elif self.size != value:
+            raise ValueError("found size %d differs from what is set %s." % (value, self.size))
+
     def in_batches(self, batch_size):
         s = 0
         batch = []
 
         for item in self.stream_fn():
-            batch += [check.check_instance(item, Xy)]
+            batch += [item]
 
             if len(batch) >= batch_size:
                 s += len(batch)
@@ -63,10 +69,23 @@ class Datastream:
             s += len(batch)
             yield batch
 
-        if self.size is None:
-            self.size = s
-        elif self.size != s:
-            raise ValueError("found size %d differs from what is set %s." % (s, self.size))
+        self._set_or_check_size(s)
+
+    def __iter__(self):
+        self._iter_s = 0
+        self._iter_stream_fn = iter(self.stream_fn())
+        return self
+
+    def __next__(self):
+        try:
+            item = next(self._iter_stream_fn)
+            self._iter_s += 1
+            return item
+        except StopIteration:
+            self._set_or_check_size(self._iter_s)
+            self._iter_s = None
+            self._iter_stream_fn = None
+            raise StopIteration()
 
 
 class Field(object):

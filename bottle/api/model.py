@@ -102,7 +102,7 @@ class ModelPersistence:
 class Result:
     def __init__(self, labels, array):
         self.labels = check.check_instance(labels, Labels)
-        self.array = array
+        self.array = check.check_length(array, len(self.labels))
         self._prediction = None
         self._distribution = None
         self._ranked_items = None
