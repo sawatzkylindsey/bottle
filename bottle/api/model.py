@@ -99,102 +99,27 @@ class ModelPersistence:
         self.model.load_parameters(savepoint)
 
 
-class Result:
-    def __init__(self, labels, array):
-        self.labels = check.check_instance(labels, Labels)
-        self.array = check.check_length(array, len(self.labels))
-        self._prediction = None
-        self._distribution = None
-        self._ranked_items = None
-        self._rank_cache = {}
+class ModelArchitecture:
+    def get_states(self):
+        raise NotImplementedError()
 
-    def prediction(self):
-        if self._prediction is None:
-            self._prediction = self.labels.vector_decode(self.array)
+    def get_state(self, name, layer=None):
+        raise NotImplementedError()
 
-        return self._prediction
 
-    def distribution(self):
-        if self._distribution is None:
-            self._distribution = self.labels.vector_decode_distribution(self.array)
+class State:
+    def __init__(self, name, layer, width):
+        self.name = check.check_not_empty(name)
+        self.layer = layer
 
-        return self._distribution
+        if layer is not None:
+            check.check_gte(layer, 0)
 
-    def rank_of(self, value, handle_unknown=False, k=None):
-        target = self.labels.decode(self.labels.encode(value, handle_unknown))
-
-        if partial_sort_off:
-            if self._ranked_items is None:
-                self._ranked_items = {item[0]: rank for rank, item in enumerate(sorted(self.distribution().items(), key=lambda item: item[1], reverse=True))}
-
-            return self._ranked_items[target]
-
-        # Use a partial sort to find the rank.
-        distribution_items = [item for item in self.distribution().items()]
-
-        # Partial sort mechanism 'nlargest'.
-        if k is not None:
-            if self._ranked_items is None or len(self._ranked_items) < k:
-                largest = heapq.nlargest(k, distribution_items, key=lambda item: item[1])
-                self._ranked_items = {item[0]: rank for rank, item in enumerate(sorted(largest, key=lambda item: item[1], reverse=True))}
-
-            if target in self._ranked_items:
-                return self._ranked_items[target]
-            else:
-                # This is a lie - the nlargest method says the correct rank of the top-k elements, after
-                # which everything else is given the last rank.
-                return len(self.labels) - 1
-
-        # Partial sort mechanism 'insertion-sort'.
-        if target in self._rank_cache:
-            return self._rank_cache[target]
-
-        insertion_sorted = []
-        partial_index = 0
-        partial_total = 0
-        index = 0
-        rank = None
-
-        while rank is None:
-            encoding, probability = distribution_items[index]
-            partial_total += probability
-            insertion_index = binary_search(insertion_sorted, probability, accessor=lambda item: item[1])
-            insertion_sorted.insert(insertion_index, (encoding, probability))
-
-            if len(insertion_sorted) == len(distribution_items):
-                # The entire list of items have been insertion sorted.
-                # Find the target.
-                while rank is None:
-                    if partial_index >= len(insertion_sorted):
-                        logging.info("something wrong for value '%s' target '%s' (handle unknown %s)" % (value, target, handle_unknown))
-
-                    if insertion_sorted[partial_index][0] == target:
-                        rank = partial_index
-
-                    partial_index += 1
-            else:
-                # A new item has been insertion sorted.
-                # Move up the partial index as much as is possible.
-                remaining = 1.0 - partial_total
-
-                # We can move up the partial index as long as the sum of the unknown portion of the probability distribution is less than
-                # the probability at the current partial index.
-                # This is true because we know that none of the unknown probabilities would exceed it (in which case they would need to be
-                # insertion sorted in a way that changes the item at the partial index's rank).
-                while partial_index < len(insertion_sorted) and remaining < insertion_sorted[partial_index][1]:
-                    if insertion_sorted[partial_index][0] == target:
-                        rank = partial_index
-                        break
-
-                    partial_index += 1
-
-            index += 1
-
-        self._rank_cache[target] = rank
-        return self._rank_cache[target]
+        self.width = check.check_gte(width, 1)
 
     def __repr__(self):
-        return "(.., prediction=%s)" % (self.prediction())
+        layer_str = "" if self.layer is None else (":%d" % self.layer)
+        return "State{%s%s, %d}" % (self.name, layer_str, self.width)
 
 
 class Savepoint:
