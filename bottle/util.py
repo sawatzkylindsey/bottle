@@ -33,6 +33,9 @@ class Window:
         for value in values:
             self.append(value)
 
+    def is_full(self):
+        return self.size == len(self.queue)
+
     def __iter__(self):
         return iter(self.queue)
 

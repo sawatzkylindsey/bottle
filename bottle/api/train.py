@@ -56,16 +56,20 @@ class TrainingParameters:
 class TrainingSchedule:
     DEFAULT_DECAY_RATE = 0.85
     DEFAULT_MAXIMUM_EPOCHS = TrainingParameters.DEFAULT_EPOCH_SIZE * 10
+    DEFAULT_MAXIMUM_DECAYS = 15
     DEFAULT_WINDOW_SIZE = 10
-    REASON_MAXIMUM_EPOCHS = "maximum epochs"
+    REASON_MAXIMUM_EPOCHS = "maximum (epochs=%d, threshold=%d)"
+    REASON_MAXIMUM_DECAYS = "maximum (decays=%d, threshold=%d)"
 
     def __init__(self):
         self.decay_rate = TrainingSchedule.DEFAULT_DECAY_RATE
         self.maximum_epochs = TrainingSchedule.DEFAULT_MAXIMUM_EPOCHS
+        self.maximum_decays = TrainingSchedule.DEFAULT_MAXIMUM_DECAYS
         self.window_size = TrainingSchedule.DEFAULT_WINDOW_SIZE
 
     def _copy(self, override_key, override_value):
-        copied = TrainingSchedule.__new__(TrainingSchedule)
+        clss = type(self)
+        copied = clss.__new__(clss)
         copied.__dict__ = {k: v for k, v in self.__dict__.items()}
         copied.__dict__[override_key] = override_value
         return copied
@@ -75,6 +79,9 @@ class TrainingSchedule:
 
     def with_maximum_epochs(self, value):
         return self._copy("maximum_epochs", check.check_gte(value, 1))
+
+    def with_maximum_decays(self, value):
+        return self._copy("maximum_decays", check.check_gte(value, 1))
 
     def with_window_size(self, value):
         return self._copy("window_size", check.check_gte(value, 1))
@@ -88,14 +95,19 @@ class TrainingSchedule:
 
     def is_finished(self, train_account):
         if train_account.epoch_count >= self.maximum_epochs:
-            return True, TrainingSchedule.REASON_MAXIMUM_EPOCHS
+            return True, TrainingSchedule.REASON_MAXIMUM_EPOCHS % \
+                (train_account.epoch_count, self.maximum_epochs)
+
+        if train_account.decay_count >= self.maximum_decays:
+            return True, TrainingSchedule.REASON_MAXIMUM_DECAYS % \
+                (train_account.decay_count, self.maximum_decays)
 
         return False, None
 
 
 class MinimumLearningSchedule(TrainingSchedule):
     DEFAULT_MINIMUM_LEARNING_RATE = 0.25
-    REASON_MINIMAL_LEARNING = "minimal learning"
+    REASON_MINIMAL_LEARNING = "minimal learning (learning rate=%f, threshold=%f)"
 
     def __init__(self):
         super().__init__()
@@ -105,15 +117,16 @@ class MinimumLearningSchedule(TrainingSchedule):
         return self._copy("minimum_learning_rate", check.check_gt(value, 0))
 
     def is_finished(self, train_account):
-        if train_account.decayed_learning_rate < TrainingSchedule.DEFAULT_MINIMUM_LEARNING_RATE:
-            return True, TrainingSchedule.REASON_MINIMAL_LEARNING
+        if train_account.decayed_learning_rate < self.minimum_learning_rate:
+            return True, MinimumLearningSchedule.REASON_MINIMAL_LEARNING % \
+                (train_account.decayed_learning_rate, self.minimum_learning_rate)
 
         return super().is_finished(train_account)
 
 
 class ConvergingSchedule(TrainingSchedule):
-    DEFAULT_CONVERGED_RATE = 0.05
-    REASON_CONVERGED = "converged"
+    DEFAULT_CONVERGED_RATE = 0.005
+    REASON_CONVERGED = "converged (average rate=%f, threshold=%f)"
 
     def __init__(self):
         super().__init__()
@@ -121,7 +134,7 @@ class ConvergingSchedule(TrainingSchedule):
         # Consider the converged rate of 0.05 which maps to the linear function `y = -0.05x`.
         # Also, imagine producing a similar function `y' = -AVERAGE_RATEx` from the actual losses.
         # Then, when AVERAGE_RATE < 0.05, or visually when y' goes above y (for x >= 0), we have converged.
-        self.converged_rate = TrainingSchedule.DEFAULT_CONVERGED_RATE
+        self.converged_rate = ConvergingSchedule.DEFAULT_CONVERGED_RATE
 
     def with_converged_rate(self, value):
         return self._copy("converged_rate", check.check_gt(value, 0))
@@ -134,7 +147,8 @@ class ConvergingSchedule(TrainingSchedule):
             average_delta = sum(sliding_deltas) / float(len(sliding_deltas))
 
             if average_delta < self.converged_rate:
-                return True, ConvergingSchedule.REASON_CONVERGED
+                return True, ConvergingSchedule.REASON_CONVERGED % \
+                    (average_delta, self.converged_rate)
 
         return super().is_finished(train_account)
 
@@ -178,9 +192,10 @@ class TrainingHarness:
         check.check_instance(model_persistence.model, api.model.IterativelyOptimized)
         check.check_instance(dataset, api.data.Dataset)
         train_account = TrainAccount(self.schedule.window_size)
-        model_persistence.save(train_account.version)
-        train_account.baseline(model_persistence.model.score(dataset.validate))
-        logging.debug("Baseline validate score: %.4f" % (train_account.best_score))
+        score = model_persistence.model.score(dataset.validate)
+        train_account.baseline(score)
+        logging.debug("Baseline validate score: %.4f" % (score))
+        model_persistence.save(train_account.version, {"score_validate": score})
         training_parameters = self.parameters
 
         if debug:
@@ -200,7 +215,7 @@ class TrainingHarness:
             if self.schedule.improved(train_account, score):
                 logging.debug("Score improved        - proceeding: previous=%s, current=%s" % (train_account.best_score, score))
                 train_account.record_round(round_losses, score)
-                model_persistence.save(train_account.version)
+                model_persistence.save(train_account.version, {"score_validate": score})
             else:
                 logging.debug("Score did not improve - decaying  : previous=%s, current=%s" % (train_account.best_score, score))
                 train_account.record_decay(training_parameters.learning_rate)

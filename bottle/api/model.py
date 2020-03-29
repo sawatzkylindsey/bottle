@@ -86,11 +86,11 @@ class ModelPersistence:
             self.savepoints = Savepoints(save_dir)
             os.makedirs(save_dir, exist_ok=True)
 
-    def save(self, version):
+    def save(self, version, extra={}):
         savepoint = self.savepoints.get(version)
         logging.debug("Saving model at %s." % (savepoint))
         self.model.save_parameters(savepoint)
-        self.savepoints.update(savepoint, True) \
+        self.savepoints.update(savepoint, extra, True) \
             .save()
 
     def load(self, version=None):
@@ -135,6 +135,8 @@ class Savepoint:
 class Savepoints:
     SAVEPOINTS_FILE = "savepoints.json"
     MODEL_DIR = "model"
+    KEY_VERSION = "version"
+    KEY_EXTRA = "extra"
 
     def __init__(self, save_dir, versions={}, latest=None, next_step=0):
         self.save_dir = check.check_instance(save_dir, str)
@@ -154,14 +156,17 @@ class Savepoints:
             key = self.version_key(version)
 
         try:
-            step = self.versions[key]
+            step = self.versions[key][Savepoints.KEY_VERSION]
         except KeyError:
             step = self.next_step
 
         return Savepoint(self.model_dir, step, key)
 
-    def update(self, savepoint, set_latest=False):
-        self.versions[savepoint.version_key] = savepoint.step
+    def update(self, savepoint, extra, set_latest=False):
+        self.versions[savepoint.version_key] = {
+            Savepoints.KEY_VERSION: savepoint.step,
+            Savepoints.KEY_EXTRA: extra
+        }
         self.next_step += 1
 
         if self.latest is None or set_latest:
@@ -198,7 +203,7 @@ class Savepoints:
                 return None
 
             try:
-                steps = [step for step in data["versions"].values()]
+                steps = [step for step in map(lambda item: item[Savepoints.KEY_VERSION], data["versions"].values())]
                 next_step = sorted(steps)[-1] if len(steps) > 0 else 0
                 return Savepoints(save_dir, data["versions"], data["latest"], next_step)
             except KeyError:
