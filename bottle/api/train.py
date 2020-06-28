@@ -28,7 +28,8 @@ class TrainingParameters:
         self.clip_norm = TrainingParameters.DEFAULT_CLIP_NORM
 
     def _copy(self, override_key, override_value):
-        copied = TrainingParameters.__new__(TrainingParameters)
+        clss = type(self)
+        copied = clss.__new__(clss)
         copied.__dict__ = {k: v for k, v in self.__dict__.items()}
         copied.__dict__[override_key] = override_value
         return copied
