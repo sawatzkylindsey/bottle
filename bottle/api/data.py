@@ -7,6 +7,7 @@ import math
 import numpy as np
 import os
 import pdb
+import random
 
 from pytils import check
 from bottle import util
@@ -35,9 +36,32 @@ class Dataset:
         self.test = check.check_instance(test, Datastream)
 
 
+class SplittingDataset:
+    def __init__(self, train_split, validate_split, randomize=True):
+        self.train_split = check.check_gt(train_split, 0)
+        self.validate_split = check.check_gt(validate_split, 0)
+
+        if train_split <= 0 or validate_split <= 0 or train_split + validate_split >= 1:
+            raise ValueError("Invalid train/validate split combination: %f/%f" % (train_split, validate_split))
+
+    def build(self, data_or_stream):
+        data = [datum for datum in data_or_stream]
+        random.shuffle(data)
+        split_1 = int(len(data) * self.train_split)
+        split_2 = split_1 + int(len(data) * self.validate_split)
+        train_set = data[:split_1]
+        validate_set = data[split_1:split_2]
+        test_set = data[split_2:]
+        logging.debug("Formulating t/v/t split %.2f/%.2f/%.2f: %d/%d/%d" % \
+            (self.train_split, self.validate_split, 1.0 - self.train_split - self.validate_split, len(train_set), len(validate_set), len(test_set)))
+        return Dataset(Datastream(lambda: train_set, len(train_set)), \
+            Datastream(lambda: validate_set, len(validate_set)), \
+            Datastream(lambda: test_set, len(test_set)))
+
+
 class Datastream:
     def __init__(self, stream_fn, size=None, order_of_magnitude=None):
-        self.stream_fn = stream_fn
+        self.stream_fn = check.check_function(stream_fn)
         which = check.check_exclusive({"size": size, "order_of_magnitude": order_of_magnitude})
 
         if which == "size":
