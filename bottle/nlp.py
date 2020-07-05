@@ -123,10 +123,6 @@ class Token:
         if word == "'":
             raise ValueError("Word '%s' (literal '%s') is invalid." % (word, self.literal))
 
-        for c in self.literal:
-            if not is_valid_ascii(c):
-                raise ValueError("Word '%s' (literal '%s') contains invalid character '%s'." % (word, self.literal, c))
-
     def is_open(self):
         return self.literal in Token.OPEN_SYMBOLS
 
@@ -149,11 +145,16 @@ class Token:
 
 
 def canonicalize_word(word):
-    if word in WORD_CANONICALIZATIONS:
-        return WORD_CANONICALIZATIONS[word]
+    canonicalization = []
 
-    word_lower = word.lower()
-    return "".join([CHARACTER_CANONICALIZATIONS[c] if c in CHARACTER_CANONICALIZATIONS else c for c in word_lower])
+    for c in word.lower():
+        c_fixed = CHARACTER_CANONICALIZATIONS[c] if c in CHARACTER_CANONICALIZATIONS else c
+        canonicalization += [c_fixed]
+
+        if not is_valid_ascii(c_fixed):
+            raise ValueError("Word '%s' contains invalid character '%s'." % (word, c))
+
+    return "".join(canonicalization)
 
 
 def is_valid_ascii(character):
@@ -163,16 +164,13 @@ def is_valid_ascii(character):
     return decimal >= 32 and decimal <= 126 and decimal != ord('"')
 
 
-WORD_CANONICALIZATIONS = {
+CHARACTER_CANONICALIZATIONS = {
     "“": "``",
     "”": "''",
-
     "‘": "'",
     "’": "'",
-}
-
-CHARACTER_CANONICALIZATIONS = {
     "–": "-",
+
     "à": "a",
     "á": "a",
     "â": "a",
@@ -223,3 +221,4 @@ CHARACTER_CANONICALIZATIONS = {
     "ź": "z",
     "ż": "z",
 }
+

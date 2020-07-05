@@ -71,6 +71,14 @@ class Datastream:
             self.size = None
             self.order_of_magnitude = check.check_gte(order_of_magnitude, 0)
 
+    def __repr__(self):
+        if self.size is not None:
+            suffix = " (size=%d)" % self.size
+        else:
+            suffix = ""
+
+        return "Datastream{10^%d%s}" % (self.order_of_magnitude, suffix)
+
     def _set_or_check_size(self, value):
         if self.size is None:
             self.size = value
@@ -110,6 +118,23 @@ class Datastream:
             self._iter_s = None
             self._iter_stream_fn = None
             raise StopIteration()
+
+    def estimate_percent_at(self, index):
+        if index < 0:
+            raise ValueError("Invalid index %d." % index)
+
+        if self.size is not None:
+            denominator = self.size
+        else:
+            denominator = int(math.pow(10, self.order_of_magnitude + 1)) - 1
+
+        # Account for the index being 0 based.
+        position = float(index + 1)
+
+        if position > denominator:
+            raise ValueError("Invalid index %d for %s." % (index, self))
+
+        return int((position / denominator) * 100)
 
 
 class Field(object):
