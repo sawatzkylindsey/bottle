@@ -54,9 +54,9 @@ class SplittingDataset:
         test_set = data[split_2:]
         logging.debug("Formulating t/v/t split %.2f/%.2f/%.2f: %d/%d/%d" % \
             (self.train_split, self.validate_split, 1.0 - self.train_split - self.validate_split, len(train_set), len(validate_set), len(test_set)))
-        return Dataset(Datastream(lambda: train_set, len(train_set)), \
-            Datastream(lambda: validate_set, len(validate_set)), \
-            Datastream(lambda: test_set, len(test_set)))
+        return Dataset(Datastream.from_list(train_set), \
+            Datastream.from_list(validate_set), \
+            Datastream.from_list(test_set))
 
 
 class Datastream:
@@ -67,21 +67,35 @@ class Datastream:
         if which == "size":
             self.size = check.check_gte(size, 1)
             self.order_of_magnitude = util.order_of_magnitude(size)
-        else:
+        elif which == "order_of_magnitude":
             self.size = None
             self.order_of_magnitude = check.check_gte(order_of_magnitude, 0)
+        else:
+            self.size = None
+            self.order_of_magnitude = None
+
+    @classmethod
+    def from_list(self, data):
+        return Datastream(lambda: data, size=len(data))
 
     def __repr__(self):
-        if self.size is not None:
-            suffix = " (size=%d)" % self.size
-        else:
-            suffix = ""
+        details = ""
 
-        return "Datastream{10^%d%s}" % (self.order_of_magnitude, suffix)
+        if self.order_of_magnitude is not None:
+            details = "10^%d" % self.order_of_magnitude
+
+        if self.size is not None:
+            details += " (size=%d)" % self.size
+
+        if len(details) == 0:
+            details = "..."
+
+        return "Datastream{%s}" % details
 
     def _set_or_check_size(self, value):
         if self.size is None:
             self.size = value
+            self.order_of_magnitude = util.order_of_magnitude(value)
         elif self.size != value:
             raise ValueError("found size %d differs from what is set %s." % (value, self.size))
 
@@ -122,6 +136,9 @@ class Datastream:
     def estimate_percent_at(self, index):
         if index < 0:
             raise ValueError("Invalid index %d." % index)
+
+        if self.size is None and self.order_of_magnitude is None:
+            return None
 
         if self.size is not None:
             denominator = self.size
