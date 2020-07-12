@@ -18,21 +18,52 @@ class TokenTests(TestCase):
         self.assertEqual(token.literal, value.lower())
 
     def test_single_quote(self):
-        with self.assertRaisesRegex(ValueError, "is invalid"):
-            nlp.Token("'")
+        value = "'"
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
+        self.assertEqual(token.is_open(), False)
+        self.assertEqual(token.is_close(), False)
+        self.assertEqual(token.is_quote(), True)
+
+        value = "'s"
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
+
+        value = "s'"
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
+
+        value = "'s'"
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
+
+        value = "wo'rd"
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
 
     def test_quote(self):
-        with self.assertRaisesRegex(ValueError, "contains invalid character"):
-            nlp.Token('"')
+        value = '"'
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
+        self.assertEqual(token.is_open(), False)
+        self.assertEqual(token.is_close(), False)
+        self.assertEqual(token.is_quote(), True)
 
-        with self.assertRaisesRegex(ValueError, "contains invalid character"):
-            nlp.Token('word"')
+        value = '"s'
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
 
-        with self.assertRaisesRegex(ValueError, "contains invalid character"):
-            nlp.Token('"word')
+        value = 's"'
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
 
-        with self.assertRaisesRegex(ValueError, "contains invalid character"):
-            nlp.Token('wo"rd')
+        value = '"s"'
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
+
+        value = 'wo"rd'
+        token = nlp.Token(value)
+        self.assertEqual(token.word, value)
 
     def test_canonicalization(self):
         token = nlp.Token("Über")
@@ -68,9 +99,27 @@ class WordTokensTests(TestCase):
         generator = nlp.word_tokens("I eAt FOOD")
         self.assertEqual([t.literal for t in generator], "i eat food".split(" "))
 
-    def test_single_quoted(self):
+    def test_single_quote(self):
+        generator = nlp.word_tokens("the new series ' .")
+        self.assertEqual([t.literal for t in generator], "the new series ' .".split(" "))
+
+        generator = nlp.word_tokens("we don't care.")
+        self.assertEqual([t.literal for t in generator], "we do n't care .".split(" "))
+
+        generator = nlp.word_tokens("we'll eat soon.")
+        self.assertEqual([t.literal for t in generator], "we 'll eat soon .".split(" "))
+
         generator = nlp.word_tokens("i eat 'food'.")
-        self.assertEqual([t.literal for t in generator], "i eat 'food' .".split(" "))
+        self.assertEqual([t.literal for t in generator], "i eat ' food ' .".split(" "))
+
+        generator = nlp.word_tokens("i eat ' food'.")
+        self.assertEqual([t.literal for t in generator], "i eat ' food ' .".split(" "))
+
+        generator = nlp.word_tokens("i eat 'food '.")
+        self.assertEqual([t.literal for t in generator], "i eat ' food ' .".split(" "))
+
+        generator = nlp.word_tokens("i eat ' food '.")
+        self.assertEqual([t.literal for t in generator], "i eat ' food ' .".split(" "))
 
     def test_quotation(self):
         generator = nlp.word_tokens("i eat \"food\"")
@@ -145,6 +194,12 @@ class SentencesTests(TestCase):
     def test_not_closed(self):
         # Determined by abrupt non-termination
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
+            [s for s in nlp.sentences([nlp.Token(w) for w in "i ' eat .".split()])]
+
+        with self.assertRaisesRegex(ValueError, "Non-terminated"):
+            [s for s in nlp.sentences([nlp.Token(w) for w in "i \" eat .".split()])]
+
+        with self.assertRaisesRegex(ValueError, "Non-terminated"):
             [s for s in nlp.sentences([nlp.Token(w) for w in "i `` eat .".split()])]
 
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
@@ -155,6 +210,12 @@ class SentencesTests(TestCase):
 
         # Determined by continuing non-termination
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
+            [s for s in nlp.sentences([nlp.Token(w) for w in "i ' eat . nothing".split()])]
+
+        with self.assertRaisesRegex(ValueError, "Non-terminated"):
+            [s for s in nlp.sentences([nlp.Token(w) for w in "i \" eat . nothing".split()])]
+
+        with self.assertRaisesRegex(ValueError, "Non-terminated"):
             [s for s in nlp.sentences([nlp.Token(w) for w in "i `` eat . nothing".split()])]
 
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
@@ -164,6 +225,12 @@ class SentencesTests(TestCase):
             [s for s in nlp.sentences([nlp.Token(w) for w in "i [ eat . nothing".split()])]
 
         # Determined by other closing.
+        with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
+            [s for s in nlp.sentences([nlp.Token(w) for w in "i ' eat \" .".split()])]
+
+        with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
+            [s for s in nlp.sentences([nlp.Token(w) for w in "i \" eat ' .".split()])]
+
         with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
             [s for s in nlp.sentences([nlp.Token(w) for w in "i `` eat ] .".split()])]
 
@@ -182,6 +249,19 @@ class SentencesTests(TestCase):
 
         with self.assertRaisesRegex(ValueError, "Un-paired close"):
             [s for s in nlp.sentences([nlp.Token(w) for w in "i ] eat .".split()])]
+
+    def test_quoted(self):
+        generator = nlp.sentences([nlp.Token(w) for w in "i eat ' food ' .".split()])
+        self.assertEqual([s for s in generator], ["i eat ' food ' .".split(" ")])
+
+        generator = nlp.sentences([nlp.Token(w) for w in "i eat ' food . '".split()])
+        self.assertEqual([s for s in generator], ["i eat ' food . '".split(" ")])
+
+        generator = nlp.sentences([nlp.Token(w) for w in "i eat \" food \" .".split()])
+        self.assertEqual([s for s in generator], ["i eat \" food \" .".split(" ")])
+
+        generator = nlp.sentences([nlp.Token(w) for w in "i eat \" food . \"".split()])
+        self.assertEqual([s for s in generator], ["i eat \" food . \"".split(" ")])
 
     def test_quotation(self):
         # Terminal .

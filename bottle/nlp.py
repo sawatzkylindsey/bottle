@@ -21,27 +21,33 @@ def word_tokens(text_or_stream):
 
         for word in nltk.tokenize.word_tokenize(text):
             if hold_back is not None:
-                if word == "'":
-                    yield Token(hold_back + "'")
+                if word == hold_back[0]:
+                    yield Token(hold_back[0])
+                    yield Token(hold_back[1])
+                    yield Token(word)
                     skip = True
                 else:
-                    yield Token(hold_back)
+                    yield Token(hold_back[0] + hold_back[1])
 
                 hold_back = None
 
             if not skip:
                 if word.startswith("'"):
-                    hold_back = word
+                    # Use hold_back to fix tokenization errors of the form:
+                    # | input  | output  | expected |
+                    # | ------ | ------- | -------- |
+                    # | 'word' | 'word ' | ' word ' |
+                    hold_back = (word[0], word[1:])
                 else:
                     hold_back = None
 
-                if not hold_back:
+                if hold_back is None:
                     yield Token(word)
 
             skip = False
 
         if hold_back is not None:
-            yield Token(hold_back)
+            yield Token(hold_back[0] + hold_back[1])
 
     if isinstance(text_or_stream, str):
         for token in tokenize(text_or_stream):
@@ -55,6 +61,7 @@ def word_tokens(text_or_stream):
 def sentences(word_token_stream):
     history = collections.deque(maxlen=5)
     open_close_stack = []
+    quoted = False
     complete = False
     sentence = []
 
@@ -62,12 +69,17 @@ def sentences(word_token_stream):
         check.check_instance(token, Token)
         history.append(token)
 
-        if token.is_open():
+        if token.is_quote():
+            if quoted:
+                quoted = False
+            else:
+                quoted = True
+
+        if token.is_open() or (token.is_quote() and quoted):
             open_close_stack += [token]
-        elif token.is_close():
+        elif token.is_close() or (token.is_quote() and not quoted):
             try:
                 open_symbol = open_close_stack.pop()
-                opened = True
             except IndexError:
                 raise ValueError("Un-paired close symbol for (snippet: %s): %s" % ([i.word for i in history], token.word))
 
@@ -110,6 +122,8 @@ class Token:
         "(": ")",
     }
     CLOSE_SYMBOLS = adjutant.dict_invert(OPEN_SYMBOLS)
+    QUOTE = '"'
+    SINGLE_QUOTE = "'"
     TERMINAL_SYMBOLS = {
         ".": True,
         "?": True,
@@ -120,14 +134,14 @@ class Token:
         self.word = check.check_not_empty(word)
         self.literal = canonicalize_word(word)
 
-        if word == "'":
-            raise ValueError("Word '%s' (literal '%s') is invalid." % (word, self.literal))
-
     def is_open(self):
         return self.literal in Token.OPEN_SYMBOLS
 
     def is_close(self):
         return self.literal in Token.CLOSE_SYMBOLS
+
+    def is_quote(self):
+        return self.literal == Token.QUOTE or self.literal == Token.SINGLE_QUOTE
 
     def is_terminal(self):
         return self.literal in Token.TERMINAL_SYMBOLS
@@ -137,6 +151,8 @@ class Token:
             return Token.OPEN_SYMBOLS[self.literal] == other.literal
         elif self.is_close():
             return Token.CLOSE_SYMBOLS[self.literal] == other.literal
+        elif self.is_quote():
+            return self.literal == other.literal
 
         return False
 
@@ -161,7 +177,7 @@ def is_valid_ascii(character):
     decimal = ord(character)
     # first ascii character: ' ' -> 32
     # last ascii character:  '~' -> 126
-    return decimal >= 32 and decimal <= 126 and decimal != ord('"')
+    return decimal >= 32 and decimal <= 126
 
 
 CHARACTER_CANONICALIZATIONS = {
