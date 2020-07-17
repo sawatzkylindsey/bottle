@@ -54,11 +54,18 @@ class TrainingParameters:
             (self.batch_size, self.epoch_size, self.dropout_rate, self.learning_rate, self.clip_norm)
 
 
+class ProgressMarker:
+    def __init__(self, improved, score):
+        self.improved = check.check_one_of(improved, [True, False])
+        self.score = check.check_not_none(score)
+
+
 class TrainingSchedule:
     DEFAULT_DECAY_RATE = 0.85
     DEFAULT_MAXIMUM_EPOCHS = TrainingParameters.DEFAULT_EPOCH_SIZE * 10
     DEFAULT_MAXIMUM_DECAYS = 15
     DEFAULT_WINDOW_SIZE = 10
+    DEFAULT_LENIENCY_RATE = 0.1
     REASON_MAXIMUM_EPOCHS = "maximum (epochs=%d, threshold=%d)"
     REASON_MAXIMUM_DECAYS = "maximum (decays=%d, threshold=%d)"
 
@@ -67,6 +74,7 @@ class TrainingSchedule:
         self.maximum_epochs = TrainingSchedule.DEFAULT_MAXIMUM_EPOCHS
         self.maximum_decays = TrainingSchedule.DEFAULT_MAXIMUM_DECAYS
         self.window_size = TrainingSchedule.DEFAULT_WINDOW_SIZE
+        self.leniency_rate = TrainingSchedule.DEFAULT_LENIENCY_RATE
 
     def _copy(self, override_key, override_value):
         clss = type(self)
@@ -87,8 +95,14 @@ class TrainingSchedule:
     def with_window_size(self, value):
         return self._copy("window_size", check.check_gte(value, 1))
 
-    def improved(self, train_account, current_score):
-        return train_account.best_score < current_score
+    def with_leniency_rate(self, value):
+        return self._copy("leniency_rate", check.check_range(value, 0, 1))
+
+    def evaluate_progress(self, train_account, current_score):
+        previous_score = train_account.best_score
+        evaluation_score = previous_score * (1.0 + self.leniency_rate)
+        improved = evaluation_score < current_score
+        return ProgressMarker(improved, max(previous_score, current_score))
 
     def decay(self, train_account, training_parameters):
         lr = training_parameters.learning_rate
@@ -212,10 +226,12 @@ class TrainingHarness:
 
             round_losses = self._optimization_round(model_persistence.model, dataset.train, training_parameters, debug)
             score = model_persistence.model.score(dataset.validate)
+            progress_marker = self.schedule.evaluate_progress(train_account, score)
 
-            if self.schedule.improved(train_account, score):
-                logging.debug("Score improved        - proceeding: previous=%s, current=%s" % (train_account.best_score, score))
-                train_account.record_round(round_losses, score)
+            if progress_marker.improved:
+                logging.debug("Score improved        - proceeding: previous=%s, current=%s (update=%s)" % \
+                    (train_account.best_score, score, progress_marker.score))
+                train_account.record_round(round_losses, progress_marker.score)
                 model_persistence.save(train_account.version, {"score_validate": score})
             else:
                 logging.debug("Score did not improve - decaying  : previous=%s, current=%s" % (train_account.best_score, score))
