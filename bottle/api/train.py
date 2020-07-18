@@ -55,9 +55,9 @@ class TrainingParameters:
 
 
 class ProgressMarker:
-    def __init__(self, improved, score):
+    def __init__(self, improved, update):
         self.improved = check.check_one_of(improved, [True, False])
-        self.score = check.check_not_none(score)
+        self.update = check.check_one_of(update, [True, False])
 
 
 class TrainingSchedule:
@@ -100,9 +100,10 @@ class TrainingSchedule:
 
     def evaluate_progress(self, train_account, current_score):
         previous_score = train_account.best_score
+        update = previous_score < current_score
         evaluation_score = previous_score * (1.0 + self.leniency_rate)
         improved = evaluation_score < current_score
-        return ProgressMarker(improved, max(previous_score, current_score))
+        return ProgressMarker(improved, update)
 
     def decay(self, train_account, training_parameters):
         lr = training_parameters.learning_rate
@@ -180,14 +181,16 @@ class TrainAccount:
     def baseline(self, baseline_score):
         self.best_score = baseline_score
 
-    def record_round(self, round_losses, score):
+    def record_round(self, round_losses, score, progress_marker):
         if self.best_score is None:
             raise ValueError("Baseline must be set before recording can begin.")
 
         self.loss_window.append_all(round_losses)
         self.epoch_count += len(round_losses)
         self.version += 1
-        self.best_score = score
+
+        if progress_marker.update:
+            self.best_score = score
 
     def record_decay(self, decayed_learning_rate):
         if self.best_score is None:
@@ -229,12 +232,14 @@ class TrainingHarness:
             progress_marker = self.schedule.evaluate_progress(train_account, score)
 
             if progress_marker.improved:
-                logging.debug("Score improved        - proceeding: previous=%s, current=%s (update=%s)" % \
-                    (train_account.best_score, score, progress_marker.score))
-                train_account.record_round(round_losses, progress_marker.score)
+                note = "with new score" if progress_marker.update else "with old score"
+                logging.debug("Score improved        - proceeding: previous=%s, current=%s (%s)" % \
+                    (train_account.best_score, score, note))
+                train_account.record_round(round_losses, score, progress_marker)
                 model_persistence.save(train_account.version, {"score_validate": score})
             else:
-                logging.debug("Score did not improve - decaying  : previous=%s, current=%s" % (train_account.best_score, score))
+                logging.debug("Score did not improve - decaying  : previous=%s, current=%s" % \
+                    (train_account.best_score, score))
                 train_account.record_decay(training_parameters.learning_rate)
                 model_persistence.load(train_account.version)
                 training_parameters = self.schedule.decay(train_account, training_parameters)
@@ -243,7 +248,7 @@ class TrainingHarness:
                     logging.debug("Training under: %s." % training_parameters)
 
         score_test = model_persistence.model.score(dataset.test)
-        logging.debug("Final validate & test scores: %.4f & %.4f" % (train_account.best_score, score_test))
+        logging.debug("Final test score: %.4f" % (score_test))
 
     def _optimization_round(self, model, trainstream, training_parameters, debug):
         check.check_instance(model, api.model.IterativelyOptimized)

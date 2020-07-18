@@ -2,7 +2,9 @@
 from pytils.invigilator import create_suite
 
 
-import test.nlp
+import test.api.data
+import test.nlp.dictionary
+import test.nlp.processing
 
 
 def all():
@@ -11,6 +13,8 @@ def all():
 
 def unit():
     return [
-        test.nlp.tests()
+        test.api.data.tests(),
+        test.nlp.dictionary.tests(),
+        test.nlp.processing.tests(),
     ]
 

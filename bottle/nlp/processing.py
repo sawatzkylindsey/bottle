@@ -7,11 +7,12 @@ import pdb
 from pytils import adjutant, check
 
 
-# Tokens
-START = "<start>"
-END = "<end>"
-UNKNOWN = "<unknown>"
-NUMBER = "<number>"
+def is_number(word):
+    try:
+        float(word.replace(",", ""))
+        return True
+    except ValueError:
+        return False
 
 
 def word_tokens(text_or_stream):

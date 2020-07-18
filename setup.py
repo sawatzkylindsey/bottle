@@ -8,6 +8,7 @@ setup(
     packages=[
         "bottle",
         "bottle.api",
+        "bottle.nlp",
     ],
 )
 

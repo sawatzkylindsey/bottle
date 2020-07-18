@@ -1,12 +1,19 @@
 
 import pdb
 
-from bottle.api import data
 from pytils import check
+
+from bottle.api import data
+from bottle.nlp import constant, processing
 
 
 # Tokens
 BLANK = "<blank>"
+
+
+class WordLabels(data.Labels):
+    def __init__(self, dictionary):
+        super().__init__(dictionary, set([BLANK, constant.UNKNOWN, constant.NUMBER]), lambda word: constant.NUMBER if processing.is_number(word) else constant.UNKNOWN)
 
 
 def as_time_major(xys, y_is_sequence=True):

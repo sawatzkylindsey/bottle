@@ -158,10 +158,10 @@ class Field(object):
     def __init__(self):
         super(Field, self).__init__()
 
-    def encode(self, value, handle_unknown=False):
+    def encode(self, value, handle_oov=False):
         raise NotImplementedError()
 
-    def vector_encode(self, value, handle_unknown=False):
+    def vector_encode(self, value, handle_oov=False):
         raise NotImplementedError()
 
     def decode(self, value):
@@ -172,31 +172,36 @@ class Field(object):
 
 
 class Labels(Field):
-    def __init__(self, values, unknown=None):
+    def __init__(self, values, special_values=None, oov_mapper=lambda word: None):
         super(Labels, self).__init__()
         check.check_set(values)
-        self.unknown = unknown
+        check.check_set(special_values, noneable=True)
+        self.oov_mapper = check.check_function(oov_mapper)
         self._empty = None
         self._encoding = {}
         self._decoding = {}
         labels_prefix = []
+        i = 0
 
-        if unknown is not None:
-            self._encoding[unknown] = 0
-            self._decoding[0] = self.unknown
-            labels_prefix = [unknown]
+        if special_values is not None:
+            for special in sorted(special_values):
+                self._encoding[check.check_not_none(special)] = i
+                self._decoding[i] = special
+                labels_prefix += [special]
+                i += 1
 
-        i = len(self._encoding)
         labels = sorted([label for label in values])
 
         for value in labels:
-            if unknown is None or value != unknown:
-                self._encoding[check.check_not_none(value)] = i
-                self._decoding[i] = value
-                i += 1
+            if value in self._encoding:
+                raise ValueError("values and special_values must be disjoint - found both to contain '%s'." % value)
+
+            self._encoding[check.check_not_none(value)] = i
+            self._decoding[i] = value
+            i += 1
 
         assert len(self._encoding) == len(self._decoding), "%d != %d" % (len(self._encoding), len(self._decoding))
-        # Include unknown in the correct position if it's being represented in the labels.
+        # Include special values in the front of the labels.
         self._labels = labels_prefix + labels
         self._encoding_copy = {k: v for k, v in self._encoding.items()}
 
@@ -212,23 +217,23 @@ class Labels(Field):
     def labels(self):
         return self._labels
 
-    def encode(self, value, handle_unknown=False):
+    def encode(self, value, handle_oov=False):
         try:
             return self._encoding[check.check_not_none(value)]
         except KeyError as e:
-            if handle_unknown:
-                return self._encoding[self.unknown]
+            if handle_oov:
+                return self._encoding[self.oov_mapper(value)]
             else:
                 raise e
 
-    def vector_encode(self, value, handle_unknown=False):
+    def vector_encode(self, value, handle_oov=False):
         encoding = [0] * len(self)
 
         if isinstance(value, dict):
             for key, probability in check.check_pdist(value).items():
-                encoding[self.encode(key, handle_unknown)] = probability
+                encoding[self.encode(key, handle_oov)] = probability
         else:
-            encoding[self.encode(value, handle_unknown)] = 1
+            encoding[self.encode(value, handle_oov)] = 1
 
         return np.array(encoding, dtype="float32", copy=False)
 
@@ -267,10 +272,10 @@ class Labels(Field):
         check.check_pdist(array)
         return {self.decode(i): probability for i, probability in enumerate(array)}
 
-    def vector_decode_probability(self, array, value, handle_unknown=False):
+    def vector_decode_probability(self, array, value, handle_oov=False):
         assert len(array) == len(self), "%d != %d" % (len(array), len(self))
         check.check_pdist(array)
-        return array[self.encode(value, handle_unknown)]
+        return array[self.encode(value, handle_oov)]
 
 
 class VectorField(Field):
@@ -284,10 +289,10 @@ class VectorField(Field):
     def __len__(self):
         return self._length
 
-    def encode(self, value, handle_unknown=False):
+    def encode(self, value, handle_oov=False):
         raise TypeError()
 
-    def vector_encode(self, value, handle_unknown=False):
+    def vector_encode(self, value, handle_oov=False):
         if len(value) != len(self):
             raise ValueError("value '%s' doesn't match vector width '%d'" % (value, self._length))
 
@@ -310,10 +315,10 @@ class IntegerField(Field):
     def __len__(self):
         return 1
 
-    def encode(self, value, handle_unknown=False):
+    def encode(self, value, handle_oov=False):
         raise TypeError()
 
-    def vector_encode(self, value, handle_unknown=False):
+    def vector_encode(self, value, handle_oov=False):
         if not isinstance(value, int):
             raise ValueError("value '%s' isn't an integer" % value)
 
@@ -343,13 +348,13 @@ class MergeLabels(Labels):
     def labels(self):
         raise TypeError()
 
-    def encode(self, value, handle_unknown=False):
+    def encode(self, value, handle_oov=False):
         raise TypeError()
 
-    def vector_encode(self, value, handle_unknown=False):
+    def vector_encode(self, value, handle_oov=False):
         if len(value) > 0:
             # Produce the 'bitwise or' of the merge elements.
-            return vector_max([self.labels.vector_encode(v, handle_unknown) for v in value])
+            return vector_max([self.labels.vector_encode(v, handle_oov) for v in value])
         else:
             return self.labels.vector_empty()
 
@@ -384,12 +389,12 @@ class ConcatField(Field):
     def labels(self):
         raise TypeError()
 
-    def encode(self, value, handle_unknown=False):
+    def encode(self, value, handle_oov=False):
         raise TypeError()
 
-    def vector_encode(self, value, handle_unknown=False):
+    def vector_encode(self, value, handle_oov=False):
         check.check_length(value, len(self.fields))
-        return np.concatenate([self.fields[i].vector_encode(v, handle_unknown) for i, v in enumerate(value)])
+        return np.concatenate([self.fields[i].vector_encode(v, handle_oov) for i, v in enumerate(value)])
 
     def decode(self, value):
         raise TypeError()
@@ -425,8 +430,8 @@ class Result:
 
         return self._distribution
 
-    def rank_of(self, value, handle_unknown=False, k=None):
-        target = self.labels.decode(self.labels.encode(value, handle_unknown))
+    def rank_of(self, value, handle_oov=False, k=None):
+        target = self.labels.decode(self.labels.encode(value, handle_oov))
 
         if partial_sort_off:
             if self._ranked_items is None:
@@ -471,7 +476,7 @@ class Result:
                 # Find the target.
                 while rank is None:
                     if partial_index >= len(insertion_sorted):
-                        logging.info("something wrong for value '%s' target '%s' (handle unknown %s)" % (value, target, handle_unknown))
+                        logging.info("something wrong for value '%s' target '%s' (handle oov %s)" % (value, target, handle_oov))
 
                     if insertion_sorted[partial_index][0] == target:
                         rank = partial_index
