@@ -55,9 +55,9 @@ class TrainingParameters:
 
 
 class ProgressMarker:
-    def __init__(self, improved, update):
+    def __init__(self, improved, update_best):
         self.improved = check.check_one_of(improved, [True, False])
-        self.update = check.check_one_of(update, [True, False])
+        self.update_best = check.check_one_of(update_best, [True, False])
 
 
 class TrainingSchedule:
@@ -65,7 +65,7 @@ class TrainingSchedule:
     DEFAULT_MAXIMUM_EPOCHS = TrainingParameters.DEFAULT_EPOCH_SIZE * 10
     DEFAULT_MAXIMUM_DECAYS = 15
     DEFAULT_WINDOW_SIZE = 10
-    DEFAULT_LENIENCY_RATE = 0.1
+    DEFAULT_LENIENCY_RATE = 0.01
     REASON_MAXIMUM_EPOCHS = "maximum (epochs=%d, threshold=%d)"
     REASON_MAXIMUM_DECAYS = "maximum (decays=%d, threshold=%d)"
 
@@ -98,12 +98,19 @@ class TrainingSchedule:
     def with_leniency_rate(self, value):
         return self._copy("leniency_rate", check.check_range(value, 0, 1))
 
-    def evaluate_progress(self, train_account, current_score):
-        previous_score = train_account.best_score
-        update = previous_score < current_score
+    def evaluate_progress(self, train_losses, best_score, current_score):
+        # Based off train data.
+        average_slope = util.average_slope(train_losses)
+        loss_improved = average_slope < 0.0
+
+        # Based off validate data.
+        previous_score = best_score
+        update_best = previous_score < current_score
         evaluation_score = previous_score * (1.0 + self.leniency_rate)
-        improved = evaluation_score < current_score
-        return ProgressMarker(improved, update)
+        validate_improved = evaluation_score < current_score
+
+        # We've improved if the losses point downwards, or if the validate score got better (allowing for some degree of leniency).
+        return ProgressMarker(loss_improved or validate_improved, update_best)
 
     def decay(self, train_account, training_parameters):
         lr = training_parameters.learning_rate
@@ -142,29 +149,38 @@ class MinimumLearningSchedule(TrainingSchedule):
 
 class ConvergingSchedule(TrainingSchedule):
     DEFAULT_CONVERGED_RATE = 0.005
-    REASON_CONVERGED = "converged (average rate=%f, threshold=%f)"
+    DEFAULT_CONSISTENCY_TIMES = 2
+    REASON_CONVERGED = "converged (average slopes=%s, threshold slope=%f)"
 
     def __init__(self):
         super().__init__()
-        # The downward slope of the rate of normalized loss at which to consider the training converged.
-        # Consider the converged rate of 0.05 which maps to the linear function `y = -0.05x`.
-        # Also, imagine producing a similar function `y' = -AVERAGE_RATEx` from the actual losses.
-        # Then, when AVERAGE_RATE < 0.05, or visually when y' goes above y (for x >= 0), we have converged.
+        # The downward slope of the rate of loss at which to consider the training converged.
+        # Consider the converged rate of 0.05, which maps to the converged slope -0.05 and linear function `y = -0.05x`.
+        # Also, imagine producing a similar linear function `y' = AVERAGE_SLOPEx` from the actual losses.
+        # Then, when AVERAGE_SLOPE > -0.05, or visually when y' goes below y consistently N times, then we have converged.
         self.converged_rate = ConvergingSchedule.DEFAULT_CONVERGED_RATE
+        self.consistency_times = ConvergingSchedule.DEFAULT_CONSISTENCY_TIMES
+        self.average_slopes = []
 
     def with_converged_rate(self, value):
         return self._copy("converged_rate", check.check_gt(value, 0))
 
+    def with_consistency_times(self, value):
+        return self._copy("consistency_times", check.check_gt(value, 0))
+
     def is_finished(self, train_account):
         if train_account.loss_window.is_full():
-            maximum_loss = max(train_account.loss_window)
-            losses = [loss / float(maximum_loss) for loss in train_account.loss_window]
-            sliding_deltas = [losses[i] - losses[i + 1] for i in range(len(losses) - 1)]
-            average_delta = sum(sliding_deltas) / float(len(sliding_deltas))
+            average_slope = util.average_slope(train_account.loss_window)
+            converged_slope = -self.converged_rate
 
-            if average_delta < self.converged_rate:
+            if average_slope > converged_slope:
+                self.consistently_converged_slopes += [average_slope]
+            else:
+                self.consistently_converged_slopes = []
+
+            if len(self.consistently_converged_slopes) >= self.consistency_times:
                 return True, ConvergingSchedule.REASON_CONVERGED % \
-                    (average_delta, self.converged_rate)
+                    (self.consistently_converged_slopes, converged_slope)
 
         return super().is_finished(train_account)
 
@@ -189,7 +205,7 @@ class TrainAccount:
         self.epoch_count += len(round_losses)
         self.version += 1
 
-        if progress_marker.update:
+        if progress_marker.update_best:
             self.best_score = score
 
     def record_decay(self, decayed_learning_rate):
@@ -219,26 +235,30 @@ class TrainingHarness:
         if debug:
             logging.debug("Training under: %s." % training_parameters)
 
-        while True:
-            finished, reason = self.schedule.is_finished(train_account)
+        check_finished = False
 
-            if finished:
-                assert reason is not None, "when the schedule is finished it must provide a reason"
-                logging.debug("Finished training: %s" % reason)
-                break
+        while True:
+            if check_finished:
+                finished, reason = self.schedule.is_finished(train_account)
+
+                if finished:
+                    assert reason is not None, "when the schedule is finished it must provide a reason"
+                    logging.debug("Finished training: %s" % reason)
+                    break
 
             round_losses = self._optimization_round(model_persistence.model, dataset.train, training_parameters, debug)
             score = model_persistence.model.score(dataset.validate)
-            progress_marker = self.schedule.evaluate_progress(train_account, score)
+            progress_marker = self.schedule.evaluate_progress(round_losses, train_account.best_score, score)
 
             if progress_marker.improved:
-                note = "with new score" if progress_marker.update else "with old score"
-                logging.debug("Score improved        - proceeding: previous=%s, current=%s (%s)" % \
-                    (train_account.best_score, score, note))
+                check_finished = True
+                logging.debug("Progress improved        - proceeding.  Validate scores: previous=%.4f, current=%.4f." % \
+                    (train_account.best_score, score))
                 train_account.record_round(round_losses, score, progress_marker)
                 model_persistence.save(train_account.version, {"score_validate": score})
             else:
-                logging.debug("Score did not improve - decaying  : previous=%s, current=%s" % \
+                check_finished = False
+                logging.debug("Progress did not improve -   decaying.  Validate scores: previous=%.4f, current=%.4f." % \
                     (train_account.best_score, score))
                 train_account.record_decay(training_parameters.learning_rate)
                 model_persistence.load(train_account.version)
@@ -247,8 +267,9 @@ class TrainingHarness:
                 if debug:
                     logging.debug("Training under: %s." % training_parameters)
 
+        score_train = model_persistence.model.score(dataset.train)
         score_test = model_persistence.model.score(dataset.test)
-        logging.debug("Final test score: %.4f" % (score_test))
+        logging.debug("Final train / test scores: %.4f / %.4f" % (score_train, score_test))
 
     def _optimization_round(self, model, trainstream, training_parameters, debug):
         check.check_instance(model, api.model.IterativelyOptimized)

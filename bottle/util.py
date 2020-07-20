@@ -18,6 +18,14 @@ def change_to_str(previous, current):
         return "▲"
 
 
+def average_slope(values):
+    if len(values) <= 1:
+        raise ValueError("Cannot calculate slope from only %d points." % len(values))
+
+    sliding_slopes = [values[i + 1] - values[i] for i in range(len(values) - 1)]
+    return sum(sliding_slopes) / float(len(sliding_slopes))
+
+
 class Window:
     def __init__(self, size):
         self.size = size
