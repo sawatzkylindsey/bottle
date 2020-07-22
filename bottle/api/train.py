@@ -65,6 +65,7 @@ class TrainingSchedule:
     DEFAULT_MAXIMUM_EPOCHS = TrainingParameters.DEFAULT_EPOCH_SIZE * 10
     DEFAULT_MAXIMUM_DECAYS = 15
     DEFAULT_WINDOW_SIZE = 10
+    DEFAULT_GROWTH_RATE = 0.01
     DEFAULT_LENIENCY_RATE = 0.01
     REASON_MAXIMUM_EPOCHS = "maximum (epochs=%d, threshold=%d)"
     REASON_MAXIMUM_DECAYS = "maximum (decays=%d, threshold=%d)"
@@ -74,6 +75,7 @@ class TrainingSchedule:
         self.maximum_epochs = TrainingSchedule.DEFAULT_MAXIMUM_EPOCHS
         self.maximum_decays = TrainingSchedule.DEFAULT_MAXIMUM_DECAYS
         self.window_size = TrainingSchedule.DEFAULT_WINDOW_SIZE
+        self.growth_rate = TrainingSchedule.DEFAULT_GROWTH_RATE
         self.leniency_rate = TrainingSchedule.DEFAULT_LENIENCY_RATE
 
     def _copy(self, override_key, override_value):
@@ -95,13 +97,17 @@ class TrainingSchedule:
     def with_window_size(self, value):
         return self._copy("window_size", check.check_gte(value, 1))
 
+    def with_growth_rate(self, value):
+        return self._copy("growth_rate", check.check_range(value, 0, 1))
+
     def with_leniency_rate(self, value):
         return self._copy("leniency_rate", check.check_range(value, 0, 1))
 
     def evaluate_progress(self, train_losses, best_score, current_score):
         # Based off train data.
         average_slope = util.average_slope(train_losses)
-        loss_improved = average_slope < 0.0
+        growth_slope = -self.growth_rate
+        loss_improved = average_slope <= growth_slope
 
         # Based off validate data.
         previous_score = best_score
@@ -110,6 +116,8 @@ class TrainingSchedule:
         validate_improved = evaluation_score < current_score
 
         # We've improved if the losses point downwards, or if the validate score got better (allowing for some degree of leniency).
+        logging.debug("(%.4f <= %.4f) -> %s || (%.4f < %.4f) -> %s" % \
+            (average_slope, growth_slope, loss_improved, evaluation_score, current_score, validate_improved))
         return ProgressMarker(loss_improved or validate_improved, update_best)
 
     def decay(self, train_account, training_parameters):
@@ -172,6 +180,7 @@ class ConvergingSchedule(TrainingSchedule):
         if train_account.loss_window.is_full():
             average_slope = util.average_slope(train_account.loss_window)
             converged_slope = -self.converged_rate
+            logging.debug("(%.4f > %.4f) -> %s" % (average_slope, converged_slope, average_slope > converged_slope))
 
             if average_slope > converged_slope:
                 self.consistently_converged_slopes += [average_slope]
