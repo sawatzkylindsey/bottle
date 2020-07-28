@@ -21,8 +21,15 @@ class WordLabels(data.Labels):
 
 def perplexity(probabilities):
     check.check_not_empty(probabilities)
-    total_probability = reduce(operator.mul, probabilities, 1)
-    return math.pow(total_probability, -1.0 / len(probabilities))
+    total_log_probability = 0.0
+
+    for probability in probabilities:
+        if probability < 0.0 or probability > 1.0:
+            raise ValueError("Invalid probability [0, 1]: %f." % probability)
+
+        total_log_probability += math.log2(probability)
+
+    return math.pow(2.0, -total_log_probability / len(probabilities))
 
 
 def as_time_major(xys, y_is_sequence=True):
