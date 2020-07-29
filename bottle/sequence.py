@@ -13,6 +13,8 @@ from bottle.nlp import constant, processing
 # Tokens
 BLANK = "<blank>"
 
+ZERO_PROBABILITY = 1e-100
+
 
 class WordLabels(data.Labels):
     def __init__(self, dictionary):
@@ -27,7 +29,7 @@ def perplexity(probabilities):
         if probability < 0.0 or probability > 1.0:
             raise ValueError("Invalid probability [0, 1]: %f." % probability)
 
-        total_log_probability += math.log2(probability)
+        total_log_probability += math.log2(ZERO_PROBABILITY if probability == 0 else probability)
 
     return math.pow(2.0, -total_log_probability / len(probabilities))
 
