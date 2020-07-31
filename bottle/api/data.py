@@ -9,7 +9,7 @@ import os
 import pdb
 import random
 
-from pytils import check
+from pytils import check, stream
 from bottle import util
 
 
@@ -77,6 +77,10 @@ class Datastream:
     @classmethod
     def from_list(self, data):
         return Datastream(lambda: data, size=len(data))
+
+    def as_randomized(self, buffer_size):
+        return Datastream(lambda: stream.randomize(self.stream_fn(), buffer_size), self.size, \
+            self.order_of_magnitude if self.size is None else None)
 
     def __repr__(self):
         details = ""

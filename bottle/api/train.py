@@ -285,6 +285,7 @@ class TrainingHarness:
         check.check_instance(trainstream, api.data.Datastream)
         check.check_instance(training_parameters, api.train.TrainingParameters)
         model_parameters = model.extract_parameters(training_parameters)
+        randomized_trainstream = trainstream.as_randomized(training_parameters.batch_size * 2)
         slot_length = util.order_of_magnitude(training_parameters.epoch_size)
         epoch_template = "Epoch {:%dd} loss: {:.6f}" % slot_length
         epoch = -1
@@ -292,7 +293,7 @@ class TrainingHarness:
 
         while epoch + 1 < training_parameters.epoch_size:
             epoch += 1
-            epoch_loss = model.step_optimize(model_parameters, trainstream, training_parameters.batch_size)
+            epoch_loss = model.step_optimize(model_parameters, randomized_trainstream, training_parameters.batch_size)
             losses += [epoch_loss]
 
             if debug:

@@ -1,7 +1,5 @@
 
-from functools import reduce
 import math
-import operator
 import pdb
 
 from pytils import check
