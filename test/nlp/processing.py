@@ -135,16 +135,22 @@ class WordTokensTests(TestCase):
 class SentencesTests(TestCase):
     def test_terminals(self):
         # Terminal .
-        generator = processing.sentences([processing.Token(w) for w in "i eat food .".split()])
-        self.assertEqual([s for s in generator], ["i eat food .".split(" ")])
+        sentence = "i eat food .".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
         # Terminal ?
-        generator = processing.sentences([processing.Token(w) for w in "i eat food ?".split()])
-        self.assertEqual([s for s in generator], ["i eat food ?".split(" ")])
+        sentence = "i eat food ?".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
         # Terminal !
-        generator = processing.sentences([processing.Token(w) for w in "i eat food !".split()])
-        self.assertEqual([s for s in generator], ["i eat food !".split(" ")])
+        sentence = "i eat food !".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
     def test_multiple(self):
         generator = processing.sentences([processing.Token(w) for w in "i eat food . you ate pie .".split()])
@@ -179,111 +185,175 @@ class SentencesTests(TestCase):
         self.assertEqual([s for s in generator], ["i , eat , food * .".split(" ")])
 
     def test_not_terminated(self):
+        sentence = "i eat".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i eat".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i eat `` food".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i eat `` food".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i eat `` food ''".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i eat `` food ''".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i eat `` food \"".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i eat `` food ''".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
     def test_not_closed(self):
         # Determined by abrupt non-termination
+        sentence = "i ' eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ' eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i \" eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i \" eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i `` eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i `` eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i ( eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ( eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i [ eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i [ eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
         # Determined by continuing non-termination
+        sentence = "i ' eat . nothing".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ' eat . nothing".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i \" eat . nothing".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i \" eat . nothing".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i `` eat . nothing".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i `` eat . nothing".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i ( eat . nothing".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ( eat . nothing".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i [ eat . nothing".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i [ eat . nothing".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
         # Determined by other closing.
+        sentence = "i ' eat \" .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ' eat \" .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i \" eat ' .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i \" eat ' .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i `` eat ] .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i `` eat ] .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i ( eat '' .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ( eat '' .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i [ eat ) .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i [ eat ) .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
     def test_not_opened(self):
+        sentence = "i '' eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i '' eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i ) eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ) eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
+        sentence = "i ] eat .".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired close"):
-            [s for s in processing.sentences([processing.Token(w) for w in "i ] eat .".split()])]
+            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
     def test_quoted(self):
-        generator = processing.sentences([processing.Token(w) for w in "i eat ' food ' .".split()])
-        self.assertEqual([s for s in generator], ["i eat ' food ' .".split(" ")])
+        sentence = "i eat ' food ' .".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
-        generator = processing.sentences([processing.Token(w) for w in "i eat ' food . '".split()])
-        self.assertEqual([s for s in generator], ["i eat ' food . '".split(" ")])
+        sentence = "i eat ' food . '".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
-        generator = processing.sentences([processing.Token(w) for w in "i eat \" food \" .".split()])
-        self.assertEqual([s for s in generator], ["i eat \" food \" .".split(" ")])
+        sentence = "i eat \" food \" .".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
-        generator = processing.sentences([processing.Token(w) for w in "i eat \" food . \"".split()])
-        self.assertEqual([s for s in generator], ["i eat \" food . \"".split(" ")])
+        sentence = "i eat \" food . \"".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
     def test_quotation(self):
         # Terminal .
-        generator = processing.sentences([processing.Token(w) for w in "i eat `` food '' .".split()])
-        self.assertEqual([s for s in generator], ["i eat `` food '' .".split(" ")])
+        sentence = "i eat `` food '' .".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
-        generator = processing.sentences([processing.Token(w) for w in "i eat `` food . ''".split()])
-        self.assertEqual([s for s in generator], ["i eat `` food . ''".split(" ")])
+        sentence = "i eat `` food . ''".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
         # Terminal ?
-        generator = processing.sentences([processing.Token(w) for w in "i eat `` food '' ?".split()])
-        self.assertEqual([s for s in generator], ["i eat `` food '' ?".split(" ")])
+        sentence = "i eat `` food '' ?".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
-        generator = processing.sentences([processing.Token(w) for w in "i eat `` food ? ''".split()])
-        self.assertEqual([s for s in generator], ["i eat `` food ? ''".split(" ")])
+        sentence = "i eat `` food ? ''".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
         # Terminal !
-        generator = processing.sentences([processing.Token(w) for w in "i eat `` food '' !".split()])
-        self.assertEqual([s for s in generator], ["i eat `` food '' !".split(" ")])
+        sentence = "i eat `` food '' !".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
-        generator = processing.sentences([processing.Token(w) for w in "i eat `` food ! ''".split()])
-        self.assertEqual([s for s in generator], ["i eat `` food ! ''".split(" ")])
+        sentence = "i eat `` food ! ''".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
 
     def test_eventually_terminal(self):
         generator = processing.sentences([processing.Token(w) for w in "i eat `` ( [ ( `` food . '' ) ] ) ''".split()])

@@ -15,6 +15,47 @@ def is_number(word):
         return False
 
 
+def is_complete_sentence(words):
+    if len(words) == 0:
+        return False
+
+    open_close_stack = []
+    quoted = False
+    complete = False
+    pending = False
+
+    for i, word in enumerate(words):
+        token = Token(word)
+
+        if token.is_quote():
+            if quoted:
+                quoted = False
+            else:
+                quoted = True
+
+        if token.is_open() or (token.is_quote() and quoted):
+            open_close_stack += [token]
+        elif token.is_close() or (token.is_quote() and not quoted):
+            try:
+                open_symbol = open_close_stack.pop()
+            except IndexError:
+                return False
+
+            if not open_symbol.pairs_to(token):
+                return False
+
+        if pending:
+            # If the token terminates the pending sentence.
+            if len(open_close_stack) == 0 and i + 1 == len(words):
+                complete = True
+
+        if token.is_terminal():
+            if len(open_close_stack) != 0:
+                pending = True
+
+    return complete or (token.is_terminal() and len(open_close_stack) == 0)
+
+
 def word_tokens(text_or_stream):
     def tokenize(text):
         hold_back = None
