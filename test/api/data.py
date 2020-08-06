@@ -8,7 +8,7 @@ from bottle.nlp import constant
 
 
 def tests():
-    return create_suite([LabelsTests])
+    return create_suite([LabelsTests, DatastreamTests])
 
 
 class LabelsTests(TestCase):
@@ -47,4 +47,75 @@ class LabelsTests(TestCase):
             labels.encode("not-a-word")
 
         self.assertEqual(labels.encode("not-a-word", handle_oov=True), labels.encode(constant.UNKNOWN))
+
+
+class DatastreamTests(TestCase):
+    def test_datastream(self):
+        datastream = data.Datastream(lambda: range(3), size=3)
+        self.assertEqual(datastream.size, 3)
+        self.assertEqual(datastream.order_of_magnitude, 0)
+        items = [item for item in datastream]
+
+        self.assertEqual(items, [i for i in range(3)])
+        self.assertEqual(datastream.size, 3)
+        self.assertEqual(datastream.order_of_magnitude, 0)
+
+        # Check that it can be re-streamed
+        items = [item for item in datastream]
+        self.assertEqual(items, [i for i in range(3)])
+
+    def test_batches(self):
+        datastream = data.Datastream(lambda: range(3), size=3)
+        items = []
+
+        for batch in datastream.in_batches(2):
+            if len(batch) != 1 and len(batch) != 2:
+                raise AssertionError("incorrect batching")
+
+            for item in batch:
+                items += [item]
+
+        self.assertEqual(items, [i for i in range(3)])
+
+    def test_order_of_magnitude(self):
+        datastream = data.Datastream(lambda: range(11), order_of_magnitude=1)
+        self.assertEqual(datastream.size, None)
+        self.assertEqual(datastream.order_of_magnitude, 1)
+        items = []
+
+        for batch in datastream.in_batches(2):
+            if len(batch) != 1 and len(batch) != 2:
+                raise AssertionError("incorrect batching")
+
+            for item in batch:
+                items += [item]
+
+        self.assertEqual(items, [i for i in range(11)])
+        self.assertEqual(datastream.size, 11)
+        self.assertEqual(datastream.order_of_magnitude, 1)
+
+    def test_estimate_percent_at(self):
+        datastream = data.Datastream.from_list([i for i in range(100)])
+
+        for i, item in enumerate(datastream):
+            percent_complete = datastream.estimate_percent_at(i)
+            # Simple +/- mechanism.
+            value = max(percent_complete - i - 1, 0)
+            self.assertEqual(value, 0)
+
+        # Check that it can be re-streamed
+        self.assertEqual([item for item in datastream], [i for i in range(100)])
+
+    def test_estimate_percent_at_order_of_magnitude(self):
+        items = [i for i in range(100)]
+        datastream = data.Datastream(lambda: items, order_of_magnitude=2)
+
+        for i, item in enumerate(datastream):
+            percent_complete = datastream.estimate_percent_at(i)
+            # Simple +/- mechanism.
+            value = max(percent_complete - i - 1, 0)
+            self.assertEqual(value, 0)
+
+        # Check that it can be re-streamed
+        self.assertEqual([item for item in datastream], [i for i in range(100)])
 
