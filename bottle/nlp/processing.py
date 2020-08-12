@@ -2,9 +2,23 @@
 import collections
 import io
 import nltk.tokenize
+import os
 import pdb
 
 from pytils import adjutant, check
+
+
+strict_on = "bottle_strict_on" in os.environ
+
+
+def activate_strict():
+    global strict_on
+    strict_on = True
+
+
+def deactivate_strict():
+    global strict_on
+    strict_on = False
 
 
 def is_number(word):
@@ -74,7 +88,7 @@ def word_tokens(text_or_stream):
                 hold_back = None
 
             if not skip:
-                if word.startswith("'"):
+                if word.startswith(Token.APOSTROPHE):
                     # Use hold_back to fix tokenization errors of the form:
                     # | input  | output  | expected |
                     # | ------ | ------- | -------- |
@@ -165,7 +179,7 @@ class Token:
     }
     CLOSE_SYMBOLS = adjutant.dict_invert(OPEN_SYMBOLS)
     QUOTE = '"'
-    SINGLE_QUOTE = "'"
+    APOSTROPHE = "'"
     TERMINAL_SYMBOLS = {
         ".": True,
         "?": True,
@@ -183,7 +197,10 @@ class Token:
         return self.literal in Token.CLOSE_SYMBOLS
 
     def is_quote(self):
-        return self.literal == Token.QUOTE or self.literal == Token.SINGLE_QUOTE
+        return self.literal == Token.QUOTE
+
+    def is_apostrophe(self):
+        return self.literal == Token.APOSTROPHE
 
     def is_terminal(self):
         return self.literal in Token.TERMINAL_SYMBOLS
@@ -209,7 +226,7 @@ def canonicalize_word(word):
         c_fixed = CHARACTER_CANONICALIZATIONS[c] if c in CHARACTER_CANONICALIZATIONS else c
         canonicalization += [c_fixed]
 
-        if not is_valid_ascii(c_fixed):
+        if strict_on and not is_valid_ascii(c_fixed):
             raise ValueError("Word '%s' contains invalid character '%s'." % (word, c))
 
     return "".join(canonicalization)
@@ -269,6 +286,7 @@ CHARACTER_CANONICALIZATIONS = {
     "ß": "s",
     "ś": "s",
     "š": "s",
+    "†": "t",
     "û": "u",
     "ü": "u",
     "ù": "u",

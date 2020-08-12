@@ -7,7 +7,7 @@ from bottle.nlp import processing
 
 
 def tests():
-    return create_suite([TokenTests, WordTokensTests, SentencesTests])
+    return create_suite([TokenTests, StrictTokenTests, WordTokensTests, SentencesTests])
 
 
 class TokenTests(TestCase):
@@ -17,29 +17,34 @@ class TokenTests(TestCase):
         self.assertEqual(token.word, value)
         self.assertEqual(token.literal, value.lower())
 
-    def test_single_quote(self):
+    def test_apostrophe(self):
         value = "'"
         token = processing.Token(value)
         self.assertEqual(token.word, value)
         self.assertEqual(token.is_open(), False)
         self.assertEqual(token.is_close(), False)
-        self.assertEqual(token.is_quote(), True)
+        self.assertEqual(token.is_quote(), False)
+        self.assertEqual(token.is_apostrophe(), True)
 
         value = "'s"
         token = processing.Token(value)
         self.assertEqual(token.word, value)
+        self.assertEqual(token.is_apostrophe(), False)
 
         value = "s'"
         token = processing.Token(value)
         self.assertEqual(token.word, value)
+        self.assertEqual(token.is_apostrophe(), False)
 
         value = "'s'"
         token = processing.Token(value)
         self.assertEqual(token.word, value)
+        self.assertEqual(token.is_apostrophe(), False)
 
         value = "wo'rd"
         token = processing.Token(value)
         self.assertEqual(token.word, value)
+        self.assertEqual(token.is_apostrophe(), False)
 
     def test_quote(self):
         value = '"'
@@ -72,6 +77,28 @@ class TokenTests(TestCase):
         token = processing.Token("łeet")
         self.assertEqual(token.literal, "leet")
 
+    def test_canonicalization_strict(self):
+        token = processing.Token("€")
+        self.assertEqual(token.literal, "€")
+
+        token = processing.Token("â€s")
+        self.assertEqual(token.literal, "a€s")
+
+
+class StrictTokenTests(TestCase):
+    def setUp(self):
+        processing.activate_strict()
+
+    def tearDown(self):
+        processing.deactivate_strict()
+
+    def test_canonicalization_strict(self):
+        with self.assertRaisesRegex(ValueError, "invalid character"):
+            processing.Token("€")
+
+        with self.assertRaisesRegex(ValueError, "invalid character"):
+            processing.Token("â€s")
+
 
 class WordTokensTests(TestCase):
     def test_terminals(self):
@@ -99,7 +126,7 @@ class WordTokensTests(TestCase):
         generator = processing.word_tokens("I eAt FOOD")
         self.assertEqual([t.literal for t in generator], "i eat food".split(" "))
 
-    def test_single_quote(self):
+    def test_apostrophe(self):
         generator = processing.word_tokens("the new series ' .")
         self.assertEqual([t.literal for t in generator], "the new series ' .".split(" "))
 
@@ -184,6 +211,12 @@ class SentencesTests(TestCase):
         generator = processing.sentences([processing.Token(w) for w in "i , eat , food * .".split()])
         self.assertEqual([s for s in generator], ["i , eat , food * .".split(" ")])
 
+    def test_apostrophe(self):
+        sentence = "the teachers ' students are \" junior congress members \" .".split()
+        self.assertTrue(processing.is_complete_sentence(sentence))
+        generator = processing.sentences([processing.Token(w) for w in sentence])
+        self.assertEqual([s for s in generator], [sentence])
+
     def test_not_terminated(self):
         sentence = "i eat".split()
         self.assertFalse(processing.is_complete_sentence(sentence))
@@ -207,11 +240,6 @@ class SentencesTests(TestCase):
 
     def test_not_closed(self):
         # Determined by abrupt non-termination
-        sentence = "i ' eat .".split()
-        self.assertFalse(processing.is_complete_sentence(sentence))
-        with self.assertRaisesRegex(ValueError, "Non-terminated"):
-            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
-
         sentence = "i \" eat .".split()
         self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Non-terminated"):
@@ -259,12 +287,7 @@ class SentencesTests(TestCase):
             [s for s in processing.sentences([processing.Token(w) for w in sentence])]
 
         # Determined by other closing.
-        sentence = "i ' eat \" .".split()
-        self.assertFalse(processing.is_complete_sentence(sentence))
-        with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
-            [s for s in processing.sentences([processing.Token(w) for w in sentence])]
-
-        sentence = "i \" eat ' .".split()
+        sentence = "i \" eat '' .".split()
         self.assertFalse(processing.is_complete_sentence(sentence))
         with self.assertRaisesRegex(ValueError, "Un-paired open/close"):
             [s for s in processing.sentences([processing.Token(w) for w in sentence])]
@@ -307,6 +330,12 @@ class SentencesTests(TestCase):
         self.assertEqual([s for s in generator], [sentence])
 
         sentence = "i eat ' food . '".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
+
+        sentence = "'".split()
+        self.assertFalse(processing.is_complete_sentence(sentence))
+
+        sentence = "i eat ' food .".split()
         self.assertTrue(processing.is_complete_sentence(sentence))
         generator = processing.sentences([processing.Token(w) for w in sentence])
         self.assertEqual([s for s in generator], [sentence])
