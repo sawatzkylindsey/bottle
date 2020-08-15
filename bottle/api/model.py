@@ -9,9 +9,13 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 import tensorflow as tf
 tf.logging.set_verbosity(logging.WARN)
+from tensorflow.core.protobuf import rewriter_config_pb2
 
 from bottle import api
 from pytils import check
+
+
+safe_on = "bottle_safe_on" in os.environ
 
 
 class Model:
@@ -58,9 +62,15 @@ class TfModel(Model):
         self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.namespace))
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
+        safe_str = ""
+
+        if safe_on:
+            config.graph_options.rewrite_options.arithmetic_optimization = rewriter_config_pb2.RewriterConfig.OFF
+            safe_str = "safely "
+
         session = tf.Session(config=config)
         session.run(tf.global_variables_initializer())
-        logging.debug("Defined computational graph and initialized session.")
+        logging.debug("Defined computational graph and %sinitialized session." % safe_str)
         return session
 
     def placeholder(self, name, shape, dtype=tf.float32):
