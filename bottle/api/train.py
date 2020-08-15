@@ -66,7 +66,7 @@ class TrainingSchedule:
     DEFAULT_MAXIMUM_DECAYS = 15
     DEFAULT_WINDOW_SIZE = 10
     DEFAULT_GROWTH_RATE = 0.01
-    DEFAULT_LENIENCY_RATE = 0.01
+    DEFAULT_LENIENCY_RATE = 0.001
     REASON_MAXIMUM_EPOCHS = "maximum (epochs=%d, threshold=%d)"
     REASON_MAXIMUM_DECAYS = "maximum (decays=%d, threshold=%d)"
 
@@ -285,7 +285,7 @@ class TrainingHarness:
         check.check_instance(trainstream, api.data.Datastream)
         check.check_instance(training_parameters, api.train.TrainingParameters)
         model_parameters = model.extract_parameters(training_parameters)
-        randomized_trainstream = trainstream.as_randomized(training_parameters.batch_size * 2)
+        randomized_trainstream = trainstream.as_randomized(training_parameters.batch_size * 4)
         slot_length = util.order_of_magnitude(training_parameters.epoch_size)
         epoch_template = "Epoch {:%dd} loss: {:.6f}" % slot_length
         epoch = -1
