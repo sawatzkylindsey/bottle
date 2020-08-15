@@ -97,6 +97,9 @@ class Datastream:
         return "Datastream{%s}" % details
 
     def _set_or_check_size(self, value):
+        if value == 0:
+            raise ValueError("empty datastream")
+
         if self.size is None:
             self.size = value
             self.order_of_magnitude = util.order_of_magnitude(value)

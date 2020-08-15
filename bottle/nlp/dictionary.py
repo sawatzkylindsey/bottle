@@ -14,6 +14,9 @@ class Builder:
         if self.exclude_numbers and processing.is_number(word):
             return self
 
+        if processing.is_reserved_token(word):
+            return self
+
         if word not in self.word_counts:
             self.word_counts[word] = 0
 

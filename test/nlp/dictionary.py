@@ -49,3 +49,19 @@ class BuilderTests(TestCase):
 
         self.assertEqual(builder.build(), set(["$6", "75%"]))
 
+    def test_builder_reserved_token(self):
+        word1 = "word1"
+        word2 = "word2"
+        word3 = "4.5"
+
+        builder = dictionary.Builder(1, False)
+        builder.add(word1) \
+            .add(word2) \
+            .add(word1) \
+            .add(word3) \
+            .add("<unk>") \
+            .add("<unknown>") \
+            .add("<blah>")
+
+        self.assertEqual(builder.build(), set([word1, word2, word3]))
+
