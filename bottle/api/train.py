@@ -157,7 +157,6 @@ class MinimumLearningSchedule(TrainingSchedule):
 
 class ConvergingSchedule(TrainingSchedule):
     DEFAULT_CONVERGED_RATE = 0.005
-    DEFAULT_CONSISTENCY_TIMES = 2
     REASON_CONVERGED = "converged (average slopes=%s, threshold slope=%f)"
 
     def __init__(self):
@@ -165,16 +164,12 @@ class ConvergingSchedule(TrainingSchedule):
         # The downward slope of the rate of loss at which to consider the training converged.
         # Consider the converged rate of 0.05, which maps to the converged slope -0.05 and linear function `y = -0.05x`.
         # Also, imagine producing a similar linear function `y' = AVERAGE_SLOPEx` from the actual losses.
-        # Then, when AVERAGE_SLOPE > -0.05, or visually when y' goes below y consistently N times, then we have converged.
+        # Then, when AVERAGE_SLOPE > -0.05, or visually when y' goes below y consistently across the window, then we have converged.
         self.converged_rate = ConvergingSchedule.DEFAULT_CONVERGED_RATE
-        self.consistency_times = ConvergingSchedule.DEFAULT_CONSISTENCY_TIMES
         self.average_slopes = []
 
     def with_converged_rate(self, value):
         return self._copy("converged_rate", check.check_gt(value, 0))
-
-    def with_consistency_times(self, value):
-        return self._copy("consistency_times", check.check_gt(value, 0))
 
     def is_finished(self, train_account):
         if train_account.loss_window.is_full():
@@ -183,13 +178,8 @@ class ConvergingSchedule(TrainingSchedule):
             logging.debug("(%.4f > %.4f) -> %s" % (average_slope, converged_slope, average_slope > converged_slope))
 
             if average_slope > converged_slope:
-                self.consistently_converged_slopes += [average_slope]
-            else:
-                self.consistently_converged_slopes = []
-
-            if len(self.consistently_converged_slopes) >= self.consistency_times:
                 return True, ConvergingSchedule.REASON_CONVERGED % \
-                    (self.consistently_converged_slopes, converged_slope)
+                    (average_slope, converged_slope)
 
         return super().is_finished(train_account)
 
@@ -244,29 +234,24 @@ class TrainingHarness:
         if debug:
             logging.debug("Training under: %s." % training_parameters)
 
-        check_finished = False
-
         while True:
-            if check_finished:
-                finished, reason = self.schedule.is_finished(train_account)
+            finished, reason = self.schedule.is_finished(train_account)
 
-                if finished:
-                    assert reason is not None, "when the schedule is finished it must provide a reason"
-                    logging.debug("Finished training: %s" % reason)
-                    break
+            if finished:
+                assert reason is not None, "when the schedule is finished it must provide a reason"
+                logging.debug("Finished training: %s" % reason)
+                break
 
             round_losses = self._optimization_round(model_persistence.model, dataset.train, training_parameters, debug)
             score = model_persistence.model.score(dataset.validate)
             progress_marker = self.schedule.evaluate_progress(round_losses, train_account.best_score, score)
 
             if progress_marker.improved:
-                check_finished = True
                 logging.debug("Progress improved        - proceeding.  Validate scores: previous=%.4f, current=%.4f." % \
                     (train_account.best_score, score))
                 train_account.record_round(round_losses, score, progress_marker)
                 model_persistence.save(train_account.version, {"score_validate": score})
             else:
-                check_finished = False
                 logging.debug("Progress did not improve -   decaying.  Validate scores: previous=%.4f, current=%.4f." % \
                     (train_account.best_score, score))
                 train_account.record_decay(training_parameters.learning_rate)
