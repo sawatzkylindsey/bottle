@@ -284,6 +284,12 @@ class Labels(Field):
         check.check_pdist(array)
         return array[self.encode(value, handle_oov)]
 
+    def random_value(self):
+        # Sample 1 thing                    v
+        #  from [0..N]           vvvvvvvvv
+        index = np.random.choice(len(self), 1)[0]
+        return self.decode(index)
+
 
 class VectorField(Field):
     def __init__(self, width):
